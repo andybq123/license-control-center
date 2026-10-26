@@ -2,6 +2,19 @@
 
 Funciona em Ubuntu 22.04/24.04 ou Debian 12. Troque o que estiver em **MAIÚSCULAS**.
 
+## Jeito rápido: script automático (recomendado)
+
+Depois do **Passo 1** (entrar na VPS) e do **Passo 2** (instalar Docker e Git), rode:
+
+```bash
+cd /opt/projeto/sistema-licencas
+sudo bash instalar.sh
+```
+
+O script `instalar.sh` faz o resto sozinho: instala o Docker se faltando, pergunta
+domínio/e-mail/senha, confere o DNS, gera o `.env`, sobe tudo com `docker compose`
+e confere se o painel ficou no ar. Depois é só seguir o **Passo 6** para conferir.
+
 ---
 
 ## Passo 0: antes de começar
