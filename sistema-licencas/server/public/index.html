@@ -2,40 +2,15 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Painel de Licenças</title>
+<title>Chatizy · Central de Licenças</title><meta name="description" content="Central Chatizy de clientes, licenças e monitoramento de instalações.">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--fg:#e8eaf0;--mut:#8b93a7;--pri:#e8a33d;--ok:#3ecf8e;--bad:#ef5b5b;--warn:#e8a33d}
-*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
-header{display:flex;align-items:center;gap:24px;padding:14px 24px;border-bottom:1px solid var(--line)}
-header b{color:var(--pri);letter-spacing:.5px}nav{display:flex;gap:4px;flex:1}
-nav button,.btn{background:none;border:1px solid transparent;color:var(--mut);padding:7px 12px;border-radius:6px;cursor:pointer;font:inherit}
-nav button.on{color:var(--fg);border-color:var(--line);background:var(--card)}
-.btn{border-color:var(--line);color:var(--fg)}.btn.pri{background:var(--pri);color:#111;border-color:var(--pri);font-weight:600}
-.btn.sm{padding:3px 8px;font-size:12px}.btn.danger{color:var(--bad)}
-main{padding:24px;max-width:1300px;margin:auto}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:24px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
-.card .n{font-size:28px;font-weight:700}.card .l{color:var(--mut)}
-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:500;font-size:12px;text-transform:uppercase}
-code{font-family:ui-monospace,monospace;color:var(--pri)}
-.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid}
-.tag.online,.tag.active{color:var(--ok)}.tag.offline,.tag.suspended{color:var(--warn)}.tag.revoked,.tag.bloqueada,.tag.inv{color:var(--bad)}
-form.inline{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
-input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:8px;border-radius:6px;font:inherit}
-label{font-size:12px;color:var(--mut)}h2{margin:0 0 14px}.mut{color:var(--mut)}
-#map{height:560px;border:1px solid var(--line);border-radius:10px;margin-bottom:12px}.leg{display:flex;gap:16px;color:var(--mut);margin-bottom:10px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
-.leaflet-popup-content{color:#111}
-[title]{position:relative}
-#login{max-width:340px;margin:12vh auto;display:grid;gap:10px}.err{color:var(--bad)}
-</style>
+<link rel="stylesheet" href="/panel.css">
 </head>
 <body>
 <div id="app"></div>
 <script>
-const $=s=>document.querySelector(s);let tab="dash";
+const $=s=>document.querySelector(s);let tab="dash", activeMap=null, clientsCache=[], refreshTimer=null;
 const api=async(p,o={})=>{const r=await fetch("/admin/api"+p,{method:o.method||"GET",headers:{"content-type":"application/json"},body:o.body?JSON.stringify(o.body):undefined});
  const j=await r.json().catch(()=>({}));if(r.status===401&&p!=="/login"){login();throw 0}if(!r.ok){alert(j.error||"Erro");throw 0}return j};
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -48,22 +23,17 @@ function login(){$("#app").innerHTML=`<form id="login" class="card"><h2>Painel d
 $("#login").onsubmit=async e=>{e.preventDefault();const r=await fetch("/admin/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(fd(e.target))});
  if(r.ok)shell();else $("#e").textContent=(await r.json()).error}}
 
-const tabs={dash:"Visão geral",clients:"Clientes",licenses:"Licenças",inst:"Instalações",map:"Mapa",logs:"Registros",admins:"Administradores"};
-function shell(){$("#app").innerHTML=`<header><b>LICENÇAS</b><nav>${Object.entries(tabs).map(([k,v])=>`<button data-t="${k}" title="Abrir ${v}">${v}</button>`).join("")}</nav>
-<button class="btn sm" id="out" title="Encerrar a sessão do painel">Sair</button></header><main id="m"></main>`;
+const tabs={dash:"Visão geral",clients:"Clientes",licenses:"Licenças",inst:"Instalações",logs:"Registros",admins:"Administradores"};
+const ICON={dash:"◈",clients:"♙",licenses:"⌘",inst:"▣",logs:"≡",admins:"♜"};
+function shell(){$("#app").innerHTML=`<aside class="sidebar"><div class="brand"><span class="brand-icon">◈</span><div>CHATIZY<small>LICENSE CONTROL</small></div></div><nav>${Object.entries(tabs).map(([k,v])=>`<button data-t="${k}" title="Abrir ${v}"><span>${ICON[k]}</span>${v}</button>`).join("")}</nav><div class="sidebar-bottom"><span class="status-dot"></span> Central de licenciamento<button class="btn" id="out" title="Encerrar sua sessão">↪ Sair</button></div></aside><div class="workspace"><header><div><span class="eyebrow">CENTRAL DE OPERAÇÕES</span><h1 id="page-title">Visão geral</h1></div><div class="header-tools"><span class="live"><span class="status-dot"></span> Monitoramento ativo</span><button class="btn" id="reload" title="Atualizar os dados agora">↻ Atualizar</button></div></header><main id="m"></main><footer>CHATIZY <span>Controle e segurança de licenças</span></footer></div><div id="toast" role="status"></div>`;
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
-$("#out").onclick=async()=>{await api("/logout",{method:"POST"});login()};render()}
+$("#out").onclick=async()=>{clearInterval(refreshTimer);await api("/logout",{method:"POST"});login()};$("#reload").onclick=()=>render();render();
+clearInterval(refreshTimer);refreshTimer=setInterval(()=>{if(tab==="dash"&&!document.querySelector("dialog[open]"))render()},30000)}
+function notify(text){const el=$("#toast");if(!el)return;el.textContent=text;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),3500)}
 
-async function render(){document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));const m=$("#m");
-if(tab==="dash"){const s=await api("/stats");m.innerHTML=`<div class="cards">${[["Clientes",s.clients],["Licenças",s.licenses],["Licenças ativas",s.active_licenses],["Instalações",s.installations],["Online agora",s.online]].map(([l,n])=>`<div class="card"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("")}</div>`;tab="inst";await renderInst(m,true);tab="dash";return}
-if(tab==="clients"){const c=await api("/clients");m.innerHTML=`<h2>Clientes</h2><form class="inline" id="f">
-<div><label>Nome *</label><input name="name" required></div><div><label>E-mail</label><input name="email" type="email"></div>
-<div><label>CPF/CNPJ</label><input name="document"></div><div><label>Telefone</label><input name="phone"></div>
-<div><label>Observações</label><input name="notes"></div><div style="align-self:end"><button class="btn pri" title="Salvar este novo cliente">Cadastrar cliente</button></div></form>
-<table><tr><th>Nome</th><th>E-mail</th><th>Documento</th><th>Telefone</th><th>Licenças</th><th></th></tr>${c.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${esc(x.document)}</td><td>${esc(x.phone)}</td><td>${x.licenses}</td>
-<td><button class="btn sm danger" data-del="${x.id}" title="Apagar o cliente e todas as licenças dele">Excluir</button></td></tr>`).join("")||"<tr><td colspan=6 class=mut>Nenhum cliente.</td></tr>"}</table>`;
-$("#f").onsubmit=async e=>{e.preventDefault();await api("/clients",{method:"POST",body:fd(e.target)});render()};
-m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Excluir cliente e todas as licenças dele?")){await api("/clients/"+b.dataset.del,{method:"DELETE"});render()}});return}
+async function render(){document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));const m=$("#m");if(activeMap){activeMap.remove();activeMap=null}$("#page-title").textContent=tabs[tab]||"Visão geral";
+if(tab==="dash"){const [s,i]=await Promise.all([api("/stats"),api("/installations")]);m.innerHTML=`<div class="section-heading"><div><h2>Visão geral da operação</h2><p class="mut">${new Date().toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"})}</p></div><span class="tag online">● Ao vivo</span></div><div class="cards">${[["Clientes",s.clients,"♙"],["Licenças",s.licenses,"⌘"],["Licenças ativas",s.active_licenses,"✓"],["Instalações",s.installations,"▣"],["Online agora",s.online,"◉"]].map(([l,n,icon])=>`<div class="card metric"><div class="metric-top"><span>${l}</span><span class="metric-icon">${icon}</span></div><div class="n">${n}</div><div class="metric-foot">${l==="Online agora"?"Conexões em atividade":"Total registrado"}</div></div>`).join("")}</div><section class="map-section"><div class="section-heading"><div><span class="eyebrow">PRESENÇA GLOBAL</span><h2>Mapa das instalações</h2></div><div class="leg">${Object.entries(COR).map(([k,c])=>`<span><span class="dot" style="background:var(${c})"></span>${k}</span>`).join("")}</div></div><div id="map"></div><div id="map-note" class="mut"></div></section><section id="recent-installations"></section>`;await renderMap(m,i);await renderInst($("#recent-installations"),false,i);return}
+if(tab==="clients")return renderClients(m);
 if(tab==="licenses"){const [l,c]=await Promise.all([api("/licenses"),api("/clients")]);m.innerHTML=`<h2>Licenças</h2><form class="inline" id="f">
 <div><label>Cliente *</label><select name="client_id" required><option value="">Escolha…</option>${c.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select></div>
 <div><label>Produto</label><input name="product" placeholder="default"></div><div><label>Validade (vazio = sem validade)</label><input name="expires_at" type="date"></div>
@@ -84,7 +54,7 @@ m.querySelectorAll("[data-dom]").forEach(s=>s.onchange=()=>upd(s.dataset.dom,{al
 m.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copy));
 m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Excluir licença?")){await api("/licenses/"+b.dataset.del,{method:"DELETE"});render()}});return}
 if(tab==="inst")return renderInst(m);
-if(tab==="map")return renderMap(m);
+
 if(tab==="logs"){const g=await api("/logs");m.innerHTML=`<h2>Registros de validação</h2><table><tr><th>Data</th><th>Ação</th><th>Resultado</th><th>Chave</th><th>IP</th><th>Detalhe</th></tr>
 ${g.map(x=>`<tr><td>${dt(x.created_at)}</td><td>${x.action}</td><td><span class="tag ${x.result==="valid"||x.result==="ok"?"online":"inv"}">${x.result}</span></td><td><code>${x.license_key||"—"}</code></td><td>${esc(x.ip)}</td><td>${esc(x.detail)}</td></tr>`).join("")}</table>`;return}
 if(tab==="admins"){const a=await api("/admins");m.innerHTML=`<h2>Administradores</h2><form class="inline" id="f">
@@ -96,7 +66,7 @@ $("#f").onsubmit=async e=>{e.preventDefault();await api("/admins",{method:"POST"
 $("#p").onsubmit=async e=>{e.preventDefault();await api("/admins/me/password",{method:"PUT",body:fd(e.target)});alert("Senha alterada.");e.target.reset()};
 m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remover administrador?")){await api("/admins/"+b.dataset.del,{method:"DELETE"});render()}})}}
 
-async function renderInst(m,append){const i=await api("/installations");const html=`<h2>Instalações</h2><table><tr><th>Status</th><th>URL / Domínio</th><th>IP</th><th>Região</th><th>Cliente / Chave</th><th>Versão</th><th>Último contato</th><th></th></tr>
+async function renderInst(m,append,rows){const i=rows||await api("/installations");const html=`<h2>Instalações</h2><table><tr><th>Status</th><th>URL / Domínio</th><th>IP</th><th>Região</th><th>Cliente / Chave</th><th>Versão</th><th>Último contato</th><th></th></tr>
 ${i.map(x=>`<tr><td><span class="tag ${x.status==="licença inválida"?"inv":x.status}">${x.status}</span></td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" style="color:inherit">${esc(x.url)}</a>`:""}<div class="mut">${esc(x.domain)}</div></td>
 <td>${esc(x.ip)}</td><td>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))||"—"}</td><td>${esc(x.client_name)}<div><code>${x.license_key}</code></div></td><td>${esc(x.app_version||"—")}</td><td>${dt(x.last_seen)}</td>
 <td><button class="btn sm ${x.blocked?"":"danger"}" data-bl="${x.id}" data-v="${x.blocked?0:1}" title="${x.blocked?"Liberar o uso normal do sistema":"Deixar o sistema só para consulta: ninguém altera nada, agente 1Doc e e-mails param"}">${x.blocked?"🔓 Desbloquear":"🔒 Bloquear"}</button> <button class="btn sm" data-del="${x.id}" title="Remover esta instalação e liberar uma vaga da licença">Liberar vaga</button>${x.block_reason?`<div class="mut">Motivo: ${esc(x.block_reason)}</div>`:""}</td></tr>`).join("")||"<tr><td colspan=8 class=mut>Nenhuma instalação ainda.</td></tr>"}</table>`;
@@ -104,20 +74,23 @@ if(append)m.insertAdjacentHTML("beforeend",html);else m.innerHTML=html;
 m.querySelectorAll("[data-bl]").forEach(b=>b.onclick=async()=>{const blocked=b.dataset.v==="1";let reason="";
  if(blocked){reason=prompt("Motivo do bloqueio (aparece para o administrador do sistema):","Pagamento pendente");if(reason===null)return}
  else if(!confirm("Desbloquear esta instalação?"))return;
- await api("/installations/"+b.dataset.bl,{method:"PUT",body:{blocked,reason}});render()});
+ await api("/installations/"+b.dataset.bl,{method:"PUT",body:{blocked,reason}});notify(blocked?"Bloqueio registrado. Aguardando a próxima verificação do OuviDesk.":"Desbloqueio registrado. Aguardando a próxima verificação do OuviDesk.");render()});
 m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remover instalação e liberar a vaga?")){await api("/installations/"+b.dataset.del,{method:"DELETE"});render()}})}
 
-const COR={online:"#3ecf8e",offline:"#e8a33d",bloqueada:"#ef5b5b","licença inválida":"#a855f7"};
-async function renderMap(m){const i=await api("/installations");const pts=i.filter(x=>x.lat!=null&&x.lon!=null);
-m.innerHTML=`<h2>Mapa das instalações</h2><div class="leg">${Object.entries(COR).map(([k,c])=>`<span><span class="dot" style="background:${c}"></span>${k}</span>`).join("")}</div><div id="map"></div>
-<div class="mut">${pts.length} de ${i.length} instalações com localização. As demais ainda não enviaram contato desde a atualização (ou estão em rede local).</div>`;
-if(!window.L){$("#map").innerHTML="<p class=mut style='padding:16px'>Não consegui carregar o mapa (sem internet no navegador?).</p>";return}
-const map=L.map("map").setView([-15.8,-47.9],4);
+const COR={online:"--ok",offline:"--warn",bloqueada:"--bad","licença inválida":"--invalid"};
+async function renderMap(m,rows){const i=rows||await api("/installations");const pts=i.filter(x=>x.lat!=null&&x.lon!=null&&Number.isFinite(Number(x.lat))&&Number.isFinite(Number(x.lon))&&Math.abs(Number(x.lat))<=90&&Math.abs(Number(x.lon))<=180);
+$("#map-note").textContent=`${pts.length} de ${i.length} instalações localizadas`+(pts.length<i.length?" · Sem ponto: IP local ou localização indisponível. Localização aproximada pelo IP da VPS.":" · Localização aproximada pelo IP da VPS.");
+if(!window.L){$("#map").innerHTML="<p class=mut>Mapa indisponível. Verifique a conexão com o serviço de mapas.</p>";return}
+const map=L.map("map",{scrollWheelZoom:false}).setView([-15.8,-47.9],4);activeMap=map;
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(map);
-const b=[];pts.forEach(x=>{const c=COR[x.status]||"#888";b.push([x.lat,x.lon]);
- L.circleMarker([x.lat,x.lon],{radius:9,color:c,fillColor:c,fillOpacity:.8,weight:2}).addTo(map)
- .bindPopup(`<b>${esc(x.client_name)}</b><br>${esc(x.url||x.domain)}<br>IP: ${esc(x.ip)}<br>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))}<br>Status: <b>${esc(x.status)}</b><br>Último contato: ${dt(x.last_seen)}`)});
-if(b.length)map.fitBounds(b,{padding:[40,40],maxZoom:10})}
+const bounds=[];pts.forEach(x=>{const c=getComputedStyle(document.documentElement).getPropertyValue(COR[x.status]||"--mut").trim();bounds.push([Number(x.lat),Number(x.lon)]);
+L.circleMarker([Number(x.lat),Number(x.lon)],{radius:10,color:c,fillColor:c,fillOpacity:.85,weight:3}).addTo(map)
+.bindPopup(`<b>${esc(x.client_name)}</b><br>${esc(x.url||x.domain)}<br>IP: ${esc(x.ip)}<br>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))}<br>Status: <b>${esc(x.status)}</b><br>Último contato: ${dt(x.last_seen)}`)});
+requestAnimationFrame(()=>{if(activeMap!==map)return;map.invalidateSize();if(bounds.length)map.fitBounds(bounds,{padding:[45,45],maxZoom:10})})}
+async function renderClients(m){clientsCache=await api("/clients");m.innerHTML=`<div class="section-heading"><div><h2>Carteira de clientes</h2><p class="mut">${clientsCache.length} clientes cadastrados</p></div><button class="btn pri" id="new-client" title="Cadastrar um novo cliente">＋ Novo cliente</button></div><div class="list-tools"><input id="search-client" type="search" placeholder="Buscar por nome, e-mail ou documento" aria-label="Buscar clientes"><span class="mut">Nome · Contato · Identificação</span></div><div id="client-list"></div><dialog id="client-dialog"><form id="client-form"><div class="modal-head"><div><span class="eyebrow">RELACIONAMENTO</span><h2 id="client-form-title">Novo cliente</h2></div><button type="button" class="btn icon-btn" id="close-client" title="Fechar cadastro" aria-label="Fechar cadastro">×</button></div><div class="form-section"><h3>Identificação</h3><div class="form-grid"><div class="wide"><label for="client-name">Nome completo / Razão social *</label><input id="client-name" name="name" required maxlength="200" autocomplete="organization" placeholder="Nome do cliente ou da empresa"></div><div><label for="client-document">CPF / CNPJ</label><input id="client-document" name="document" maxlength="24" placeholder="Documento do cliente"></div><div><label for="client-phone">Telefone</label><input id="client-phone" name="phone" type="tel" autocomplete="tel" placeholder="(00) 00000-0000"></div></div></div><div class="form-section"><h3>Contato e observações</h3><label for="client-email">E-mail</label><input id="client-email" name="email" type="email" autocomplete="email" placeholder="contato@empresa.com.br"><label for="client-notes">Observações</label><textarea id="client-notes" name="notes" rows="3" placeholder="Informações adicionais do cliente"></textarea></div><div class="modal-actions"><button type="button" class="btn" id="cancel-client" title="Descartar alterações">Cancelar</button><button class="btn pri" title="Salvar os dados do cliente">✓ Salvar cliente</button></div></form></dialog>`;
+const list=()=>{const term=$("#search-client").value.toLocaleLowerCase("pt-BR");const rows=clientsCache.filter(x=>[x.name,x.email,x.document,x.phone].some(v=>String(v||"").toLocaleLowerCase("pt-BR").includes(term)));$("#client-list").innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Contato</th><th>CPF / CNPJ</th><th>Licenças</th><th>Ações</th></tr></thead><tbody>${rows.map(x=>`<tr><td><div class="client-identity"><span class="avatar">${esc(x.name.slice(0,2).toUpperCase())}</span><div><strong>${esc(x.name)}</strong><div class="mut">Cliente #${x.id}</div></div></div></td><td>${esc(x.email)||"—"}<div class="mut">${esc(x.phone)||"—"}</div></td><td>${esc(x.document)||"—"}</td><td><span class="tag active">${x.licenses} licenças</span></td><td><button class="btn sm" data-edit="${x.id}" title="Editar dados deste cliente">✎ Editar</button> <button class="btn sm danger" data-del="${x.id}" title="Excluir cliente e suas licenças">Excluir</button></td></tr>`).join("")||'<tr><td colspan="5" class="empty">Nenhum cliente encontrado.</td></tr>'}</tbody></table></div>`;m.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>open(clientsCache.find(x=>x.id===Number(b.dataset.edit))));m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Excluir cliente e todas as licenças dele?")){await api("/clients/"+b.dataset.del,{method:"DELETE"});render()}})};
+let editing=null;const close=()=>$("#client-dialog").close();const open=(client)=>{editing=client?.id||null;$("#client-form").reset();$("#client-form-title").textContent=editing?"Editar cliente":"Novo cliente";if(client)for(const name of ["name","email","document","phone","notes"])$("#client-form").elements.namedItem(name).value=client[name]||"";$("#client-dialog").showModal()};$("#new-client").onclick=()=>open();$("#close-client").onclick=close;$("#cancel-client").onclick=close;$("#search-client").oninput=list;
+$("#client-form").onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{await api("/clients"+(editing?"/"+editing:""),{method:editing?"PUT":"POST",body:fd(e.target)});close();notify("Cliente salvo com sucesso.");render()}finally{button.disabled=false}};list()}
 
 fetch("/admin/api/me").then(r=>r.ok?shell():login());
 </script>

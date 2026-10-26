@@ -1,4 +1,10 @@
 const cache = new Map();
+const EMPTY = { country: "", region: "", city: "", lat: null, lon: null };
+export function coordinates(lat, lon) {
+  if (lat == null || lon == null || lat === "" || lon === "") return null;
+  const a = Number(lat), b = Number(lon);
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180 ? { lat: a, lon: b } : null;
+}
 
 function isPrivate(ip) {
   return !ip || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1|fc|fd|fe80)/i.test(ip.replace(/^::ffff:/, ""));
@@ -9,21 +15,25 @@ function isPrivate(ip) {
 export async function lookupGeo(rawIp) {
   const ip = (rawIp || "").replace(/^::ffff:/, "");
   if (isPrivate(ip)) return { country: "Rede local", region: "", city: "" };
-  if (cache.has(ip)) return cache.get(ip);
+  const cached = cache.get(ip);
+  if (cached && cached.until > Date.now()) return cached.geo;
   try {
     const tpl = process.env.GEOIP_URL || "http://ip-api.com/json/{ip}?fields=status,country,regionName,city,lat,lon";
-    const res = await fetch(tpl.replace("{ip}", ip), { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(tpl.replace("{ip}", encodeURIComponent(ip)), { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) throw new Error("Geolocalização indisponível");
     const j = await res.json();
+    if (j.status === "fail" || j.error) throw new Error("IP sem localização");
+    const point = coordinates(j.lat ?? j.latitude, j.lon ?? j.longitude);
     const geo = {
       country: j.country || j.country_name || "",
       region: j.regionName || j.region || "",
       city: j.city || "",
-      lat: Number(j.lat ?? j.latitude) || null,
-      lon: Number(j.lon ?? j.longitude) || null,
+      lat: point?.lat ?? null,
+      lon: point?.lon ?? null,
     };
-    cache.set(ip, geo);
+    cache.set(ip, { geo, until: Date.now() + (point ? 24 * 3600_000 : 60_000) });
     return geo;
   } catch {
-    return { country: "", region: "", city: "" };
+    return { ...EMPTY };
   }
 }

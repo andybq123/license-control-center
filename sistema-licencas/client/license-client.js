@@ -52,16 +52,27 @@ export const activate = (o) => call("activate", o);
 export const validate = (o) => call("validate", o);
 export const heartbeat = (o) => call("heartbeat", o);
 
-export function startHeartbeat(o, minutes = 10) {
+export const HEARTBEAT_INTERVAL_MS = 30_000;
+export const HEARTBEAT_TIMEOUT_MS = 10_000;
+export function heartbeatInterval(minutes = 0.5) {
+  return Math.min(HEARTBEAT_INTERVAL_MS, Math.max(1000, (Number(minutes) || 0.5) * 60_000));
+}
+
+export function startHeartbeat(o, minutes = 0.5) {
   let fails = 0;
+  let inFlight = false;
   const tick = async () => {
-    const r = await heartbeat(o);
-    if (r.valid) fails = 0;
-    else if (r.code === "unreachable") { if (++fails >= 6) o.onInvalid?.(r); } // tolera ~1h sem internet
-    else o.onInvalid?.(r);
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      const r = await heartbeat(o);
+      if (r.valid) { fails = 0; o.onValid?.(r); }
+      else if (r.code === "unreachable") { ++fails; o.onUnreachable?.(r, fails); } // mantém o último estado
+      else { fails = 0; o.onInvalid?.(r); }
+    } finally { inFlight = false; }
   };
   tick();
-  return setInterval(tick, minutes * 60_000);
+  return setInterval(tick, heartbeatInterval(minutes));
 }
 
 // Uso direto no terminal:  node license-client.js https://licencas.seudominio.com CHAVE https://app.cliente.com
