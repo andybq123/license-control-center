@@ -27,6 +27,7 @@ painel estiver no ar. Também oferece criar o backup diário automático.
 |---|---|
 | `sistema-licencas/` | O sistema de licenciamento completo (painel + API), pronto para rodar na VPS com Docker |
 | `sistema-licencas/client/license-client.js` | Biblioteca para integrar no **seu** sistema (valida na instalação e mantém o heartbeat) |
+| `sistema-licencas/instalar.sh` | Script que faz a instalação na VPS sozinho |
 | `sistema-licencas/LEIA-ME.md` | Manual de uso do painel e da integração |
 | `sistema-licencas/IMPLANTAR-NA-VPS.md` | Guia de implantação na VPS |
 
