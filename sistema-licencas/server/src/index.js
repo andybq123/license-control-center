@@ -115,7 +115,9 @@ const ouvidesk = (action) => (req, res) => {
   };
   const fake = {
     status(c) { this.code = c; return this; },
-    json(p) { res.status(this.code || 200).json({ valida: !!p.valid, mensagem: p.message || "", codigo: p.code, expira_em: p.expires_at || null }); },
+    // Sempre 200: o instalador do OuviDesk usa `curl -f`, que trata 4xx como "servidor fora do ar"
+    // e esconderia o motivo real (domínio, limite, expirada...). O resultado vai em `valida`.
+    json(p) { res.status(200).json({ valida: !!p.valid, mensagem: p.message || "", codigo: p.code, expira_em: p.expires_at || null }); },
   };
   // Instalação/atualização do OuviDesk ativa (ou renova) a instalação.
   handleCheck(req, fake, action).catch((e) => res.status(500).json({ valida: false, mensagem: e.message }));
