@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Painel de Licenças</title>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--fg:#e8eaf0;--mut:#8b93a7;--pri:#e8a33d;--ok:#3ecf8e;--bad:#ef5b5b;--warn:#e8a33d}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;align-items:center;gap:24px;padding:14px 24px;border-bottom:1px solid var(--line)}
+header b{color:var(--pri);letter-spacing:.5px}nav{display:flex;gap:4px;flex:1}
+nav button,.btn{background:none;border:1px solid transparent;color:var(--mut);padding:7px 12px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{color:var(--fg);border-color:var(--line);background:var(--card)}
+.btn{border-color:var(--line);color:var(--fg)}.btn.pri{background:var(--pri);color:#111;border-color:var(--pri);font-weight:600}
+.btn.sm{padding:3px 8px;font-size:12px}.btn.danger{color:var(--bad)}
+main{padding:24px;max-width:1300px;margin:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card .n{font-size:28px;font-weight:700}.card .l{color:var(--mut)}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:500;font-size:12px;text-transform:uppercase}
+code{font-family:ui-monospace,monospace;color:var(--pri)}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid}
+.tag.online,.tag.active{color:var(--ok)}.tag.offline,.tag.suspended{color:var(--warn)}.tag.revoked,.tag.bloqueada,.tag.inv{color:var(--bad)}
+form.inline{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:8px;border-radius:6px;font:inherit}
+label{font-size:12px;color:var(--mut)}h2{margin:0 0 14px}.mut{color:var(--mut)}
+#login{max-width:340px;margin:12vh auto;display:grid;gap:10px}.err{color:var(--bad)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $=s=>document.querySelector(s);let tab="dash";
+const api=async(p,o={})=>{const r=await fetch("/admin/api"+p,{method:o.method||"GET",headers:{"content-type":"application/json"},body:o.body?JSON.stringify(o.body):undefined});
+ const j=await r.json().catch(()=>({}));if(r.status===401&&p!=="/login"){login();throw 0}if(!r.ok){alert(j.error||"Erro");throw 0}return j};
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dt=s=>s?new Date(s.includes("T")?s:s.replace(" ","T")+"Z").toLocaleString("pt-BR"):"—";
+const fd=f=>Object.fromEntries(new FormData(f));
+
+function login(){$("#app").innerHTML=`<form id="login" class="card"><h2>Painel de Licenças</h2>
+<input name="email" type="email" placeholder="E-mail" required><input name="password" type="password" placeholder="Senha" required>
+<button class="btn pri">Entrar</button><div class="err" id="e"></div></form>`;
+$("#login").onsubmit=async e=>{e.preventDefault();const r=await fetch("/admin/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(fd(e.target))});
+ if(r.ok)shell();else $("#e").textContent=(await r.json()).error}}
+
+const tabs={dash:"Visão geral",clients:"Clientes",licenses:"Licenças",inst:"Instalações",logs:"Registros",admins:"Administradores"};
+function shell(){$("#app").innerHTML=`<header><b>LICENÇAS</b><nav>${Object.entries(tabs).map(([k,v])=>`<button data-t="${k}">${v}</button>`).join("")}</nav>
+<button class="btn sm" id="out">Sair</button></header><main id="m"></main>`;
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
+$("#out").onclick=async()=>{await api("/logout",{method:"POST"});login()};render()}
+
+async function render(){document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));const m=$("#m");
+if(tab==="dash"){const s=await api("/stats");m.innerHTML=`<div class="cards">${[["Clientes",s.clients],["Licenças",s.licenses],["Licenças ativas",s.active_licenses],["Instalações",s.installations],["Online agora",s.online]].map(([l,n])=>`<div class="card"><div class="n">${n}</div><div class="l">${l}</div></div>`).join("")}</div>`;tab="inst";await renderInst(m,true);tab="dash";return}
+if(tab==="clients"){const c=await api("/clients");m.innerHTML=`<h2>Clientes</h2><form class="inline" id="f">
+<div><label>Nome *</label><input name="name" required></div><div><label>E-mail</label><input name="email" type="email"></div>
+<div><label>CPF/CNPJ</label><input name="document"></div><div><label>Telefone</label><input name="phone"></div>
+<div><label>Observações</label><input name="notes"></div><div style="align-self:end"><button class="btn pri">Cadastrar cliente</button></div></form>
+<table><tr><th>Nome</th><th>E-mail</th><th>Documento</th><th>Telefone</th><th>Licenças</th><th></th></tr>${c.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${esc(x.document)}</td><td>${esc(x.phone)}</td><td>${x.licenses}</td>
+<td><button class="btn sm danger" data-del="${x.id}">Excluir</button></td></tr>`).join("")||"<tr><td colspan=6 class=mut>Nenhum cliente.</td></tr>"}</table>`;
+$("#f").onsubmit=async e=>{e.preventDefault();await api("/clients",{method:"POST",body:fd(e.target)});render()};
+m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Excluir cliente e todas as licenças dele?")){await api("/clients/"+b.dataset.del,{method:"DELETE"});render()}});return}
+if(tab==="licenses"){const [l,c]=await Promise.all([api("/licenses"),api("/clients")]);m.innerHTML=`<h2>Licenças</h2><form class="inline" id="f">
+<div><label>Cliente *</label><select name="client_id" required><option value="">Escolha…</option>${c.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select></div>
+<div><label>Produto</label><input name="product" placeholder="default"></div><div><label>Validade (vazio = sem validade)</label><input name="expires_at" type="date"></div>
+<div><label>Limite de instalações</label><input name="max_installs" type="number" min="1" value="1"></div>
+<div><label>Domínios permitidos (vírgula; vazio = trava no 1º)</label><input name="allowed_domains" placeholder="cliente.com, *.cliente.com"></div>
+<div style="align-self:end"><button class="btn pri">Gerar chave</button></div></form>
+<table><tr><th>Chave</th><th>Cliente</th><th>Produto</th><th>Status</th><th>Validade</th><th>Instalações</th><th>Domínios</th><th></th></tr>${l.map(x=>`<tr>
+<td><code>${x.license_key}</code> <button class="btn sm" data-copy="${x.license_key}">Copiar</button></td><td>${esc(x.client_name)}</td><td>${esc(x.product)}</td>
+<td><select data-st="${x.id}">${["active","suspended","revoked"].map(s=>`<option value="${s}" ${s===x.status?"selected":""}>${{active:"Ativa",suspended:"Suspensa",revoked:"Revogada"}[s]}</option>`).join("")}</select></td>
+<td><input type="date" data-exp="${x.id}" value="${x.expires_at||""}"></td><td><input type="number" min="1" style="width:70px" data-max="${x.id}" value="${x.max_installs}"> <span class="mut">em uso: ${x.installs}</span></td>
+<td><input data-dom="${x.id}" value="${esc(x.allowed_domains)}"></td><td><button class="btn sm danger" data-del="${x.id}">Excluir</button></td></tr>`).join("")||"<tr><td colspan=8 class=mut>Nenhuma licença.</td></tr>"}</table>`;
+$("#f").onsubmit=async e=>{e.preventDefault();const r=await api("/licenses",{method:"POST",body:fd(e.target)});prompt("Licença gerada. Copie a chave:",r.license_key);render()};
+const upd=(id,body)=>api("/licenses/"+id,{method:"PUT",body});
+m.querySelectorAll("[data-st]").forEach(s=>s.onchange=()=>upd(s.dataset.st,{status:s.value}));
+m.querySelectorAll("[data-exp]").forEach(s=>s.onchange=()=>upd(s.dataset.exp,{expires_at:s.value}));
+m.querySelectorAll("[data-max]").forEach(s=>s.onchange=()=>upd(s.dataset.max,{max_installs:s.value}));
+m.querySelectorAll("[data-dom]").forEach(s=>s.onchange=()=>upd(s.dataset.dom,{allowed_domains:s.value}));
+m.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copy));
+m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Excluir licença?")){await api("/licenses/"+b.dataset.del,{method:"DELETE"});render()}});return}
+if(tab==="inst")return renderInst(m);
+if(tab==="logs"){const g=await api("/logs");m.innerHTML=`<h2>Registros de validação</h2><table><tr><th>Data</th><th>Ação</th><th>Resultado</th><th>Chave</th><th>IP</th><th>Detalhe</th></tr>
+${g.map(x=>`<tr><td>${dt(x.created_at)}</td><td>${x.action}</td><td><span class="tag ${x.result==="valid"||x.result==="ok"?"online":"inv"}">${x.result}</span></td><td><code>${x.license_key||"—"}</code></td><td>${esc(x.ip)}</td><td>${esc(x.detail)}</td></tr>`).join("")}</table>`;return}
+if(tab==="admins"){const a=await api("/admins");m.innerHTML=`<h2>Administradores</h2><form class="inline" id="f">
+<div><label>Nome</label><input name="name" required></div><div><label>E-mail</label><input name="email" type="email" required></div>
+<div><label>Senha (mín. 8)</label><input name="password" type="password" minlength="8" required></div><div style="align-self:end"><button class="btn pri">Adicionar</button></div></form>
+<form class="inline" id="p"><div><label>Sua senha atual</label><input name="current" type="password" required></div><div><label>Nova senha</label><input name="password" type="password" minlength="8" required></div><div style="align-self:end"><button class="btn">Trocar minha senha</button></div></form>
+<table><tr><th>Nome</th><th>E-mail</th><th>Criado em</th><th></th></tr>${a.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${dt(x.created_at)}</td><td><button class="btn sm danger" data-del="${x.id}">Remover</button></td></tr>`).join("")}</table>`;
+$("#f").onsubmit=async e=>{e.preventDefault();await api("/admins",{method:"POST",body:fd(e.target)});render()};
+$("#p").onsubmit=async e=>{e.preventDefault();await api("/admins/me/password",{method:"PUT",body:fd(e.target)});alert("Senha alterada.");e.target.reset()};
+m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remover administrador?")){await api("/admins/"+b.dataset.del,{method:"DELETE"});render()}})}}
+
+async function renderInst(m,append){const i=await api("/installations");const html=`<h2>Instalações</h2><table><tr><th>Status</th><th>URL / Domínio</th><th>IP</th><th>Região</th><th>Cliente / Chave</th><th>Versão</th><th>Último contato</th><th></th></tr>
+${i.map(x=>`<tr><td><span class="tag ${x.status==="licença inválida"?"inv":x.status}">${x.status}</span></td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" style="color:inherit">${esc(x.url)}</a>`:""}<div class="mut">${esc(x.domain)}</div></td>
+<td>${esc(x.ip)}</td><td>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))||"—"}</td><td>${esc(x.client_name)}<div><code>${x.license_key}</code></div></td><td>${esc(x.app_version||"—")}</td><td>${dt(x.last_seen)}</td>
+<td><button class="btn sm" data-bl="${x.id}" data-v="${x.blocked?0:1}">${x.blocked?"Desbloquear":"Bloquear"}</button> <button class="btn sm danger" data-del="${x.id}">Liberar vaga</button></td></tr>`).join("")||"<tr><td colspan=8 class=mut>Nenhuma instalação ainda.</td></tr>"}</table>`;
+if(append)m.insertAdjacentHTML("beforeend",html);else m.innerHTML=html;
+m.querySelectorAll("[data-bl]").forEach(b=>b.onclick=async()=>{await api("/installations/"+b.dataset.bl,{method:"PUT",body:{blocked:b.dataset.v==="1"}});render()});
+m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remover instalação e liberar a vaga?")){await api("/installations/"+b.dataset.del,{method:"DELETE"});render()}})}
+
+fetch("/admin/api/me").then(r=>r.ok?shell():login());
+</script>
+</body>
+</html>

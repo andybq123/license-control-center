@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- `sistema-licencas/` is a standalone Node.js license server (self-hosted on a VPS via Docker + Caddy); it is excluded from lint and is not part of the Vite app.
