@@ -81,3 +81,18 @@ Resposta: `{"valid": true|false, "code": "...", "message": "..."}`. Códigos de 
   `GEOIP_URL` no `.env`, ex.: `https://ipapi.co/{ip}/json/`.
 - Nenhuma proteção no cliente é inquebrável: se o código-fonte do seu sistema é entregue ao cliente,
   ofusque/compile a parte da checagem.
+
+## Integração com o OuviDesk (Ouvidoria)
+
+O OuviDesk já tem a checagem pronta. Na VPS da ouvidoria, edite
+`local-docker/deploy/licenca.conf` e coloque:
+
+```
+LICENCA_URL=https://SEU-SUBDOMINIO-DE-LICENCAS
+```
+
+A partir daí `deploy.sh instalar` e `deploy.sh atualizar` pedem a chave e chamam
+`POST /api/public/validar` (`{chave, dominio, instalacao_id, versao}` → `{valida, mensagem}`).
+A instalação aparece no painel com URL, IP, região e status.
+Para manter o status "online", agende na VPS da ouvidoria (crontab, a cada 10 min) uma chamada a
+`POST /api/public/heartbeat` com o mesmo corpo.
