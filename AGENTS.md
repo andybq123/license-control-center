@@ -10,3 +10,5 @@
 <!-- LOVABLE:END -->
 
 - `sistema-licencas/` is a standalone Node.js license server (self-hosted on a VPS via Docker + Caddy); it is excluded from lint and is not part of the Vite app.
+- The VPS admin panel uses its own semantic tokens in `server/public/panel.css` and a single vanilla-JS dashboard; keep it separate from the TanStack host because Express APIs are served by the VPS.
+- License polling uses a capped interval, success and failure callbacks, and keeps the last state on network errors; enforcement must also be installed in the licensed application.
