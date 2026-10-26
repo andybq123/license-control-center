@@ -11,13 +11,15 @@ export async function lookupGeo(rawIp) {
   if (isPrivate(ip)) return { country: "Rede local", region: "", city: "" };
   if (cache.has(ip)) return cache.get(ip);
   try {
-    const tpl = process.env.GEOIP_URL || "http://ip-api.com/json/{ip}?fields=status,country,regionName,city";
+    const tpl = process.env.GEOIP_URL || "http://ip-api.com/json/{ip}?fields=status,country,regionName,city,lat,lon";
     const res = await fetch(tpl.replace("{ip}", ip), { signal: AbortSignal.timeout(3000) });
     const j = await res.json();
     const geo = {
       country: j.country || j.country_name || "",
       region: j.regionName || j.region || "",
       city: j.city || "",
+      lat: Number(j.lat ?? j.latitude) || null,
+      lon: Number(j.lon ?? j.longitude) || null,
     };
     cache.set(ip, geo);
     return geo;

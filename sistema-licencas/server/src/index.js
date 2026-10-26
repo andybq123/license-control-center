@@ -64,8 +64,10 @@ async function handleCheck(req, res, action) {
     return respond(res, 403, { valid: false, code: "not_activated", message: "Instalação não ativada." });
   }
   if (existing?.blocked) {
+    // Continua registrando o contato, para o painel mostrar que a instância segue no ar (em modo consulta).
+    db.prepare("UPDATE installations SET ip=?, last_seen=datetime('now') WHERE id=?").run(ip, existing.id);
     log(lic.id, action, "instance_blocked", ip, domain);
-    return respond(res, 403, { valid: false, code: "instance_blocked", message: "Esta instalação foi bloqueada." });
+    return respond(res, 403, { valid: false, code: "instance_blocked", message: existing.block_reason ? `Esta instalação foi bloqueada: ${existing.block_reason}` : "Esta instalação foi bloqueada pelo fornecedor da licença." });
   }
   const active = lic ? db.prepare("SELECT COUNT(*) c FROM installations WHERE license_id=? AND blocked=0").get(lic.id).c : 0;
   const r = checkLicense(lic, { domain, activeInstalls: active, isExisting: !!existing });
@@ -76,11 +78,11 @@ async function handleCheck(req, res, action) {
 
   const geo = await lookupGeo(ip);
   if (existing) {
-    db.prepare(`UPDATE installations SET domain=?, url=?, ip=?, country=?, region=?, city=?, app_version=COALESCE(?,app_version), last_seen=datetime('now') WHERE id=?`)
-      .run(domain, url || existing.url, ip, geo.country, geo.region, geo.city, app_version || null, existing.id);
+    db.prepare(`UPDATE installations SET domain=?, url=?, ip=?, country=?, region=?, city=?, lat=?, lon=?, app_version=COALESCE(?,app_version), last_seen=datetime('now') WHERE id=?`)
+      .run(domain, url || existing.url, ip, geo.country, geo.region, geo.city, geo.lat ?? null, geo.lon ?? null, app_version || null, existing.id);
   } else {
-    db.prepare(`INSERT INTO installations (license_id,instance_id,domain,url,ip,country,region,city,app_version) VALUES (?,?,?,?,?,?,?,?,?)`)
-      .run(lic.id, String(instance_id), domain, url || "", ip, geo.country, geo.region, geo.city, app_version || null);
+    db.prepare(`INSERT INTO installations (license_id,instance_id,domain,url,ip,country,region,city,lat,lon,app_version) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(lic.id, String(instance_id), domain, url || "", ip, geo.country, geo.region, geo.city, geo.lat ?? null, geo.lon ?? null, app_version || null);
     // Sem domínios definidos: trava no domínio da primeira ativação
     if (!lic.allowed_domains) db.prepare("UPDATE licenses SET allowed_domains=? WHERE id=?").run(domain, lic.id);
   }
@@ -210,7 +212,14 @@ A.get("/installations", (_req, res) => {
     JOIN licenses l ON l.id=i.license_id JOIN clients c ON c.id=l.client_id ORDER BY i.last_seen DESC`).all();
   res.json(rows.map((i) => ({ ...i, status: statusOf(i, { status: i.lstatus, expires_at: i.expires_at }) })));
 });
-A.put("/installations/:id", (req, res) => { db.prepare("UPDATE installations SET blocked=? WHERE id=?").run(req.body?.blocked ? 1 : 0, req.params.id); res.json({ ok: true }); });
+A.put("/installations/:id", (req, res) => {
+  const blocked = req.body?.blocked ? 1 : 0;
+  const reason = blocked ? String(req.body?.reason || "").slice(0, 300) : null;
+  const r = db.prepare("UPDATE installations SET blocked=?, block_reason=? WHERE id=?").run(blocked, reason, req.params.id);
+  const inst = db.prepare("SELECT license_id, domain FROM installations WHERE id=?").get(req.params.id);
+  if (inst) log(inst.license_id, blocked ? "block" : "unblock", "ok", req.ip, `${inst.domain} por ${req.admin.email}${reason ? " — " + reason : ""}`);
+  res.json({ ok: r.changes > 0 });
+});
 A.delete("/installations/:id", (req, res) => { db.prepare("DELETE FROM installations WHERE id=?").run(req.params.id); res.json({ ok: true }); });
 
 A.get("/logs", (_req, res) => res.json(db.prepare(`SELECT g.*, l.license_key FROM logs g LEFT JOIN licenses l ON l.id=g.license_id ORDER BY g.id DESC LIMIT 300`).all()));
