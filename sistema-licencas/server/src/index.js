@@ -101,6 +101,27 @@ app.post("/api/v1/deactivate", publicLimiter, (req, res) => {
   res.json({ ok: r.changes > 0 });
 });
 app.get("/api/v1/public-key", (_req, res) => res.type("text/plain").send(signingKeys().publicKey));
+
+/* ===== Compatibilidade com o OuviDesk (deploy.sh / comum.sh) =====
+   Recebe { chave, dominio, instalacao_id, versao } e responde { valida, mensagem }. */
+const ouvidesk = (action) => (req, res) => {
+  const b = req.body || {};
+  const dominio = b.dominio || b.domain || "";
+  req.body = {
+    license_key: b.chave || b.license_key,
+    instance_id: b.instalacao_id || b.instance_id,
+    url: b.url || (dominio ? `https://${dominio}` : ""),
+    app_version: b.versao || b.app_version,
+  };
+  const fake = {
+    status(c) { this.code = c; return this; },
+    json(p) { res.status(this.code || 200).json({ valida: !!p.valid, mensagem: p.message || "", codigo: p.code, expira_em: p.expires_at || null }); },
+  };
+  // Instalação/atualização do OuviDesk ativa (ou renova) a instalação.
+  handleCheck(req, fake, action).catch((e) => res.status(500).json({ valida: false, mensagem: e.message }));
+};
+app.post("/api/public/validar", publicLimiter, ouvidesk("activate"));
+app.post("/api/public/heartbeat", publicLimiter, ouvidesk("heartbeat"));
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 /* ============ PAINEL ADMIN ============ */
