@@ -64,3 +64,8 @@ CREATE TABLE IF NOT EXISTS logs (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
+
+// Migrações leves (bancos antigos)
+for (const col of ["lat REAL", "lon REAL", "block_reason TEXT"]) {
+  try { db.exec(`ALTER TABLE installations ADD COLUMN ${col}`); } catch { /* já existe */ }
+}

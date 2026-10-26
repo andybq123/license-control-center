@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Painel de Licenças</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{--bg:#0f1115;--card:#171a21;--line:#262b36;--fg:#e8eaf0;--mut:#8b93a7;--pri:#e8a33d;--ok:#3ecf8e;--bad:#ef5b5b;--warn:#e8a33d}
 *{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
@@ -24,6 +26,9 @@ code{font-family:ui-monospace,monospace;color:var(--pri)}
 form.inline{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
 input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:8px;border-radius:6px;font:inherit}
 label{font-size:12px;color:var(--mut)}h2{margin:0 0 14px}.mut{color:var(--mut)}
+#map{height:560px;border:1px solid var(--line);border-radius:10px;margin-bottom:12px}.leg{display:flex;gap:16px;color:var(--mut);margin-bottom:10px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.leaflet-popup-content{color:#111}
+[title]{position:relative}
 #login{max-width:340px;margin:12vh auto;display:grid;gap:10px}.err{color:var(--bad)}
 </style>
 </head>
@@ -39,13 +44,13 @@ const fd=f=>Object.fromEntries(new FormData(f));
 
 function login(){$("#app").innerHTML=`<form id="login" class="card"><h2>Painel de Licenças</h2>
 <input name="email" type="email" placeholder="E-mail" required><input name="password" type="password" placeholder="Senha" required>
-<button class="btn pri">Entrar</button><div class="err" id="e"></div></form>`;
+<button class="btn pri" title="Entrar no painel">Entrar</button><div class="err" id="e"></div></form>`;
 $("#login").onsubmit=async e=>{e.preventDefault();const r=await fetch("/admin/api/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(fd(e.target))});
  if(r.ok)shell();else $("#e").textContent=(await r.json()).error}}
 
-const tabs={dash:"Visão geral",clients:"Clientes",licenses:"Licenças",inst:"Instalações",logs:"Registros",admins:"Administradores"};
-function shell(){$("#app").innerHTML=`<header><b>LICENÇAS</b><nav>${Object.entries(tabs).map(([k,v])=>`<button data-t="${k}">${v}</button>`).join("")}</nav>
-<button class="btn sm" id="out">Sair</button></header><main id="m"></main>`;
+const tabs={dash:"Visão geral",clients:"Clientes",licenses:"Licenças",inst:"Instalações",map:"Mapa",logs:"Registros",admins:"Administradores"};
+function shell(){$("#app").innerHTML=`<header><b>LICENÇAS</b><nav>${Object.entries(tabs).map(([k,v])=>`<button data-t="${k}" title="Abrir ${v}">${v}</button>`).join("")}</nav>
+<button class="btn sm" id="out" title="Encerrar a sessão do painel">Sair</button></header><main id="m"></main>`;
 document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{tab=b.dataset.t;render()});
 $("#out").onclick=async()=>{await api("/logout",{method:"POST"});login()};render()}
 
@@ -54,9 +59,9 @@ if(tab==="dash"){const s=await api("/stats");m.innerHTML=`<div class="cards">${[
 if(tab==="clients"){const c=await api("/clients");m.innerHTML=`<h2>Clientes</h2><form class="inline" id="f">
 <div><label>Nome *</label><input name="name" required></div><div><label>E-mail</label><input name="email" type="email"></div>
 <div><label>CPF/CNPJ</label><input name="document"></div><div><label>Telefone</label><input name="phone"></div>
-<div><label>Observações</label><input name="notes"></div><div style="align-self:end"><button class="btn pri">Cadastrar cliente</button></div></form>
+<div><label>Observações</label><input name="notes"></div><div style="align-self:end"><button class="btn pri" title="Salvar este novo cliente">Cadastrar cliente</button></div></form>
 <table><tr><th>Nome</th><th>E-mail</th><th>Documento</th><th>Telefone</th><th>Licenças</th><th></th></tr>${c.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${esc(x.document)}</td><td>${esc(x.phone)}</td><td>${x.licenses}</td>
-<td><button class="btn sm danger" data-del="${x.id}">Excluir</button></td></tr>`).join("")||"<tr><td colspan=6 class=mut>Nenhum cliente.</td></tr>"}</table>`;
+<td><button class="btn sm danger" data-del="${x.id}" title="Apagar o cliente e todas as licenças dele">Excluir</button></td></tr>`).join("")||"<tr><td colspan=6 class=mut>Nenhum cliente.</td></tr>"}</table>`;
 $("#f").onsubmit=async e=>{e.preventDefault();await api("/clients",{method:"POST",body:fd(e.target)});render()};
 m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Excluir cliente e todas as licenças dele?")){await api("/clients/"+b.dataset.del,{method:"DELETE"});render()}});return}
 if(tab==="licenses"){const [l,c]=await Promise.all([api("/licenses"),api("/clients")]);m.innerHTML=`<h2>Licenças</h2><form class="inline" id="f">
@@ -64,12 +69,12 @@ if(tab==="licenses"){const [l,c]=await Promise.all([api("/licenses"),api("/clien
 <div><label>Produto</label><input name="product" placeholder="default"></div><div><label>Validade (vazio = sem validade)</label><input name="expires_at" type="date"></div>
 <div><label>Limite de instalações</label><input name="max_installs" type="number" min="1" value="1"></div>
 <div><label>Domínios permitidos (vírgula; vazio = trava no 1º)</label><input name="allowed_domains" placeholder="cliente.com, *.cliente.com"></div>
-<div style="align-self:end"><button class="btn pri">Gerar chave</button></div></form>
+<div style="align-self:end"><button class="btn pri" title="Criar a licença e gerar uma nova chave">Gerar chave</button></div></form>
 <table><tr><th>Chave</th><th>Cliente</th><th>Produto</th><th>Status</th><th>Validade</th><th>Instalações</th><th>Domínios</th><th></th></tr>${l.map(x=>`<tr>
-<td><code>${x.license_key}</code> <button class="btn sm" data-copy="${x.license_key}">Copiar</button></td><td>${esc(x.client_name)}</td><td>${esc(x.product)}</td>
-<td><select data-st="${x.id}">${["active","suspended","revoked"].map(s=>`<option value="${s}" ${s===x.status?"selected":""}>${{active:"Ativa",suspended:"Suspensa",revoked:"Revogada"}[s]}</option>`).join("")}</select></td>
+<td><code>${x.license_key}</code> <button class="btn sm" data-copy="${x.license_key}" title="Copiar a chave para a área de transferência">Copiar</button></td><td>${esc(x.client_name)}</td><td>${esc(x.product)}</td>
+<td><select data-st="${x.id}" title="Ativa: funciona · Suspensa: pausada · Revogada: cancelada">${["active","suspended","revoked"].map(s=>`<option value="${s}" ${s===x.status?"selected":""}>${{active:"Ativa",suspended:"Suspensa",revoked:"Revogada"}[s]}</option>`).join("")}</select></td>
 <td><input type="date" data-exp="${x.id}" value="${x.expires_at||""}"></td><td><input type="number" min="1" style="width:70px" data-max="${x.id}" value="${x.max_installs}"> <span class="mut">em uso: ${x.installs}</span></td>
-<td><input data-dom="${x.id}" value="${esc(x.allowed_domains)}"></td><td><button class="btn sm danger" data-del="${x.id}">Excluir</button></td></tr>`).join("")||"<tr><td colspan=8 class=mut>Nenhuma licença.</td></tr>"}</table>`;
+<td><input data-dom="${x.id}" value="${esc(x.allowed_domains)}"></td><td><button class="btn sm danger" data-del="${x.id}" title="Apagar a licença (todas as instalações dela param)">Excluir</button></td></tr>`).join("")||"<tr><td colspan=8 class=mut>Nenhuma licença.</td></tr>"}</table>`;
 $("#f").onsubmit=async e=>{e.preventDefault();const r=await api("/licenses",{method:"POST",body:fd(e.target)});prompt("Licença gerada. Copie a chave:",r.license_key);render()};
 const upd=(id,body)=>api("/licenses/"+id,{method:"PUT",body});
 m.querySelectorAll("[data-st]").forEach(s=>s.onchange=()=>upd(s.dataset.st,{status:s.value}));
@@ -79,13 +84,14 @@ m.querySelectorAll("[data-dom]").forEach(s=>s.onchange=()=>upd(s.dataset.dom,{al
 m.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copy));
 m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Excluir licença?")){await api("/licenses/"+b.dataset.del,{method:"DELETE"});render()}});return}
 if(tab==="inst")return renderInst(m);
+if(tab==="map")return renderMap(m);
 if(tab==="logs"){const g=await api("/logs");m.innerHTML=`<h2>Registros de validação</h2><table><tr><th>Data</th><th>Ação</th><th>Resultado</th><th>Chave</th><th>IP</th><th>Detalhe</th></tr>
 ${g.map(x=>`<tr><td>${dt(x.created_at)}</td><td>${x.action}</td><td><span class="tag ${x.result==="valid"||x.result==="ok"?"online":"inv"}">${x.result}</span></td><td><code>${x.license_key||"—"}</code></td><td>${esc(x.ip)}</td><td>${esc(x.detail)}</td></tr>`).join("")}</table>`;return}
 if(tab==="admins"){const a=await api("/admins");m.innerHTML=`<h2>Administradores</h2><form class="inline" id="f">
 <div><label>Nome</label><input name="name" required></div><div><label>E-mail</label><input name="email" type="email" required></div>
-<div><label>Senha (mín. 8)</label><input name="password" type="password" minlength="8" required></div><div style="align-self:end"><button class="btn pri">Adicionar</button></div></form>
-<form class="inline" id="p"><div><label>Sua senha atual</label><input name="current" type="password" required></div><div><label>Nova senha</label><input name="password" type="password" minlength="8" required></div><div style="align-self:end"><button class="btn">Trocar minha senha</button></div></form>
-<table><tr><th>Nome</th><th>E-mail</th><th>Criado em</th><th></th></tr>${a.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${dt(x.created_at)}</td><td><button class="btn sm danger" data-del="${x.id}">Remover</button></td></tr>`).join("")}</table>`;
+<div><label>Senha (mín. 8)</label><input name="password" type="password" minlength="8" required></div><div style="align-self:end"><button class="btn pri" title="Criar um novo administrador">Adicionar</button></div></form>
+<form class="inline" id="p"><div><label>Sua senha atual</label><input name="current" type="password" required></div><div><label>Nova senha</label><input name="password" type="password" minlength="8" required></div><div style="align-self:end"><button class="btn" title="Alterar a sua senha de acesso">Trocar minha senha</button></div></form>
+<table><tr><th>Nome</th><th>E-mail</th><th>Criado em</th><th></th></tr>${a.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${dt(x.created_at)}</td><td><button class="btn sm danger" data-del="${x.id}" title="Tirar o acesso deste administrador">Remover</button></td></tr>`).join("")}</table>`;
 $("#f").onsubmit=async e=>{e.preventDefault();await api("/admins",{method:"POST",body:fd(e.target)});render()};
 $("#p").onsubmit=async e=>{e.preventDefault();await api("/admins/me/password",{method:"PUT",body:fd(e.target)});alert("Senha alterada.");e.target.reset()};
 m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remover administrador?")){await api("/admins/"+b.dataset.del,{method:"DELETE"});render()}})}}
@@ -93,10 +99,25 @@ m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remo
 async function renderInst(m,append){const i=await api("/installations");const html=`<h2>Instalações</h2><table><tr><th>Status</th><th>URL / Domínio</th><th>IP</th><th>Região</th><th>Cliente / Chave</th><th>Versão</th><th>Último contato</th><th></th></tr>
 ${i.map(x=>`<tr><td><span class="tag ${x.status==="licença inválida"?"inv":x.status}">${x.status}</span></td><td>${x.url?`<a href="${esc(x.url)}" target="_blank" style="color:inherit">${esc(x.url)}</a>`:""}<div class="mut">${esc(x.domain)}</div></td>
 <td>${esc(x.ip)}</td><td>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))||"—"}</td><td>${esc(x.client_name)}<div><code>${x.license_key}</code></div></td><td>${esc(x.app_version||"—")}</td><td>${dt(x.last_seen)}</td>
-<td><button class="btn sm" data-bl="${x.id}" data-v="${x.blocked?0:1}">${x.blocked?"Desbloquear":"Bloquear"}</button> <button class="btn sm danger" data-del="${x.id}">Liberar vaga</button></td></tr>`).join("")||"<tr><td colspan=8 class=mut>Nenhuma instalação ainda.</td></tr>"}</table>`;
+<td><button class="btn sm ${x.blocked?"":"danger"}" data-bl="${x.id}" data-v="${x.blocked?0:1}" title="${x.blocked?"Liberar o uso normal do sistema":"Deixar o sistema só para consulta: ninguém altera nada, agente 1Doc e e-mails param"}">${x.blocked?"🔓 Desbloquear":"🔒 Bloquear"}</button> <button class="btn sm" data-del="${x.id}" title="Remover esta instalação e liberar uma vaga da licença">Liberar vaga</button>${x.block_reason?`<div class="mut">Motivo: ${esc(x.block_reason)}</div>`:""}</td></tr>`).join("")||"<tr><td colspan=8 class=mut>Nenhuma instalação ainda.</td></tr>"}</table>`;
 if(append)m.insertAdjacentHTML("beforeend",html);else m.innerHTML=html;
-m.querySelectorAll("[data-bl]").forEach(b=>b.onclick=async()=>{await api("/installations/"+b.dataset.bl,{method:"PUT",body:{blocked:b.dataset.v==="1"}});render()});
+m.querySelectorAll("[data-bl]").forEach(b=>b.onclick=async()=>{const blocked=b.dataset.v==="1";let reason="";
+ if(blocked){reason=prompt("Motivo do bloqueio (aparece para o administrador do sistema):","Pagamento pendente");if(reason===null)return}
+ else if(!confirm("Desbloquear esta instalação?"))return;
+ await api("/installations/"+b.dataset.bl,{method:"PUT",body:{blocked,reason}});render()});
 m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remover instalação e liberar a vaga?")){await api("/installations/"+b.dataset.del,{method:"DELETE"});render()}})}
+
+const COR={online:"#3ecf8e",offline:"#e8a33d",bloqueada:"#ef5b5b","licença inválida":"#a855f7"};
+async function renderMap(m){const i=await api("/installations");const pts=i.filter(x=>x.lat!=null&&x.lon!=null);
+m.innerHTML=`<h2>Mapa das instalações</h2><div class="leg">${Object.entries(COR).map(([k,c])=>`<span><span class="dot" style="background:${c}"></span>${k}</span>`).join("")}</div><div id="map"></div>
+<div class="mut">${pts.length} de ${i.length} instalações com localização. As demais ainda não enviaram contato desde a atualização (ou estão em rede local).</div>`;
+if(!window.L){$("#map").innerHTML="<p class=mut style='padding:16px'>Não consegui carregar o mapa (sem internet no navegador?).</p>";return}
+const map=L.map("map").setView([-15.8,-47.9],4);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap"}).addTo(map);
+const b=[];pts.forEach(x=>{const c=COR[x.status]||"#888";b.push([x.lat,x.lon]);
+ L.circleMarker([x.lat,x.lon],{radius:9,color:c,fillColor:c,fillOpacity:.8,weight:2}).addTo(map)
+ .bindPopup(`<b>${esc(x.client_name)}</b><br>${esc(x.url||x.domain)}<br>IP: ${esc(x.ip)}<br>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))}<br>Status: <b>${esc(x.status)}</b><br>Último contato: ${dt(x.last_seen)}`)});
+if(b.length)map.fitBounds(b,{padding:[40,40],maxZoom:10})}
 
 fetch("/admin/api/me").then(r=>r.ok?shell():login());
 </script>
