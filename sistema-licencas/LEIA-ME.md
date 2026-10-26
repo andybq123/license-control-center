@@ -1,5 +1,8 @@
 # Sistema de Licenciamento
 
+> **Passo a passo para copiar e colar na VPS:** veja [IMPLANTAR-NA-VPS.md](./IMPLANTAR-NA-VPS.md)
+
+
 Painel para cadastrar clientes, gerar chaves e acompanhar cada instalação (URL, IP, status online/offline e região).
 
 ## 1. Instalar na VPS (Ubuntu/Debian)
