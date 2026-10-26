@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+sistema-licencas/.env
+sistema-licencas/CREDENCIAIS.txt
+sistema-licencas/data/

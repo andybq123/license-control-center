@@ -7,19 +7,37 @@ do sistema do cliente; se forem inválidas, a instalação é bloqueada.
 > **Como instalar na VPS: passo a passo para copiar e colar está logo abaixo,**
 > **e também no arquivo [`sistema-licencas/IMPLANTAR-NA-VPS.md`](./sistema-licencas/IMPLANTAR-NA-VPS.md).**
 
-## Instalação automática (recomendado)
+## Instalação automática em 1 comando (recomendado)
 
-Depois de entrar na VPS, instalar Docker e Git e clonar o repositório (passos abaixo),
-basta rodar um comando e responder as perguntas:
+**Antes:** crie no seu domínio um registro **A** `licencas.SEUDOMINIO.com` → IP da VPS
+e libere as portas **80** e **443**.
+
+Entre na VPS (`ssh root@IP_DA_VPS`) e cole o bloco abaixo. Troque só a primeira linha
+pela URL deste repositório (botão verde **Code** no GitHub):
 
 ```bash
-cd /opt/projeto/sistema-licencas
-sudo bash instalar.sh
+REPO=https://github.com/SEU-USUARIO/SEU-REPOSITORIO.git
+apt update && apt install -y git curl openssl && \
+git clone "$REPO" /opt/projeto && \
+cd /opt/projeto/sistema-licencas && sudo bash instalar.sh
 ```
 
-O script instala o Docker se faltando, pergunta domínio/e-mail/senha do admin,
-confere o DNS, gera o `.env`, sobe tudo com `docker compose` e avisa quando o
-painel estiver no ar. Também oferece criar o backup diário automático.
+> Repositório privado? Quando o Git pedir senha, cole um **token de acesso** do GitHub
+> (Settings → Developer settings → Personal access tokens).
+
+O script pergunta **apenas duas coisas**:
+1. o **subdomínio** do painel (ex.: `licencas.seudominio.com`);
+2. o **e-mail** para o certificado HTTPS.
+
+Todo o resto é automático: instala o Docker, confere o DNS, gera a chave secreta,
+**cria o usuário admin com senha aleatória**, sobe o painel com HTTPS, agenda o backup
+diário e mostra no final o login e a senha. Eles ficam guardados em
+`/opt/projeto/sistema-licencas/CREDENCIAIS.txt`. Depois de entrar, troque a senha no
+painel, na aba **Administradores**.
+
+Para ver o login de novo: `cat /opt/projeto/sistema-licencas/CREDENCIAIS.txt`
+
+Para atualizar depois: `cd /opt/projeto && git pull && cd sistema-licencas && sudo bash instalar.sh`
 
 ## O que tem no repositório
 

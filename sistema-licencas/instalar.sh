@@ -5,7 +5,7 @@
 # O que ele faz:
 #   1. Confere se está rodando como root em Ubuntu/Debian
 #   2. Instala Docker e Docker Compose se faltarem
-#   3. Pergunta domínio, e-mail e senha do admin
+#   3. Pergunta só o subdomínio e o e-mail do HTTPS (o admin é gerado sozinho)
 #   4. Confere se o domínio aponta para o IP da VPS
 #   5. Gera o arquivo .env (com JWT_SECRET aleatório)
 #   6. Sobe tudo com docker compose e confere se ficou no ar
@@ -67,39 +67,36 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Perguntas
+# 3. Perguntas (só duas: subdomínio e e-mail do HTTPS)
 # ---------------------------------------------------------------------------
 ask() {
-  local pergunta="$1" padrao="${2:-}" valor
-  read -r -p "$pergunta${padrao:+ [$padrao]}: " valor </dev/tty
-  echo "${valor:-$padrao}"
+  local pergunta="$1" valor
+  read -r -p "$pergunta: " valor </dev/tty
+  echo "$valor"
 }
 
-secret() { openssl rand -hex 32; }
-
-echo ""
-bold "→ Agora preciso de alguns dados (Enter aceita o valor entre colchetes):"
-
 if [ -f .env ]; then
-  warn "Já existe um .env. Vou reaproveitar os valores como sugestão."
+  warn "Já existe uma instalação. Vou reaproveitar as configurações e o admin atuais."
   # shellcheck disable=SC1091
   source .env
 fi
 
+echo ""
+bold "→ Só preciso de 2 informações:"
 DOMAIN=${DOMAIN:-}
 while [ -z "$DOMAIN" ]; do
-  DOMAIN=$(ask "Domínio do painel (ex.: licencas.seudominio.com)")
-  [ -z "$DOMAIN" ] && warn "O domínio não pode ficar vazio."
+  DOMAIN=$(ask "Subdomínio do painel (ex.: licencas.seudominio.com)")
+  DOMAIN=$(echo "$DOMAIN" | sed -E 's#^https?://##; s#/.*$##')
 done
-ADMIN_EMAIL=$(ask "E-mail do administrador" "${ADMIN_EMAIL:-admin@seudominio.com}")
-ADMIN_PASSWORD=$(ask "Senha do administrador (forte!)" "${ADMIN_PASSWORD:-}")
-
-while [ -z "$ADMIN_PASSWORD" ]; do
-  warn "A senha não pode ficar vazia."
-  ADMIN_PASSWORD=$(ask "Senha do administrador (forte!)")
+ACME_EMAIL=${ACME_EMAIL:-}
+while [[ ! "$ACME_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]]; do
+  ACME_EMAIL=$(ask "E-mail para o certificado HTTPS")
 done
 
-JWT_SECRET=${JWT_SECRET:-$(secret)}
+# Tudo o resto é gerado automaticamente
+ADMIN_EMAIL=${ADMIN_EMAIL:-admin@$DOMAIN}
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | head -c 16)}
+JWT_SECRET=${JWT_SECRET:-$(openssl rand -hex 32)}
 ONLINE_MINUTES=${ONLINE_MINUTES:-15}
 
 # ---------------------------------------------------------------------------
@@ -126,6 +123,7 @@ fi
 bold "→ Criando o arquivo .env..."
 cat > .env <<EOF
 DOMAIN=$DOMAIN
+ACME_EMAIL=$ACME_EMAIL
 ADMIN_EMAIL=$ADMIN_EMAIL
 ADMIN_PASSWORD=$ADMIN_PASSWORD
 JWT_SECRET=$JWT_SECRET
@@ -144,7 +142,7 @@ $SUDO docker compose up -d --build
 # Aguardar o app responder
 echo -n "  Aguardando o painel subir"
 for i in $(seq 1 60); do
-  if curl -sf --max-time 3 "http://127.0.0.1:3000/health" >/dev/null 2>&1; then
+  if $SUDO docker compose exec -T app node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
     echo ""
     ok "Painel no ar!"
     break
@@ -153,7 +151,7 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-if ! curl -sf --max-time 3 "http://127.0.0.1:3000/health" >/dev/null 2>&1; then
+if ! $SUDO docker compose exec -T app node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
   echo ""
   warn "O painel ainda não respondeu. Veja os logs: sudo docker compose logs -f app"
 fi
@@ -168,6 +166,8 @@ bold "════════════════════════�
 echo ""
 echo "  Painel:   https://$DOMAIN"
 echo "  Login:    $ADMIN_EMAIL"
+echo "  Senha:    $ADMIN_PASSWORD   (troque no painel depois de entrar)"
+echo "  Guardado em: $APP_DIR/CREDENCIAIS.txt"
 echo "  Saúde:    curl https://$DOMAIN/health  (deve responder {\"ok\":true})"
 echo ""
 echo "  Chave pública para o license-client.js:"
@@ -178,17 +178,21 @@ echo "  Se o site não abrir, confira o registro A e as portas 80/443,"
 echo "  e veja os logs: sudo docker compose logs -f caddy"
 echo ""
 
-# Backup diário opcional
-if [ "${CI:-}" != "1" ]; then
-  BACKUP=$(ask "Criar backup diário automático às 03h? (s/N)" "n")
-  case "$BACKUP" in
-    [sS]|[sS][iI][mM])
-      mkdir -p /opt/backups
-      (crontab -l 2>/dev/null; echo "0 3 * * * tar czf /opt/backups/licencas-\$(date +\%F).tgz -C $APP_DIR data") | crontab -
-      ok "Backup diário agendado em /opt/backups"
-      ;;
-  esac
+# Backup diário automático (03h)
+mkdir -p /opt/backups
+if ! crontab -l 2>/dev/null | grep -q "licencas-"; then
+  (crontab -l 2>/dev/null; echo "0 3 * * * tar czf /opt/backups/licencas-\$(date +\%F).tgz -C $APP_DIR data && find /opt/backups -name 'licencas-*.tgz' -mtime +14 -delete") | crontab -
 fi
+ok "Backup diário às 03h em /opt/backups (guarda 14 dias)"
+
+# Salvar credenciais num arquivo só do root
+cat > "$APP_DIR/CREDENCIAIS.txt" <<EOF
+Painel: https://$DOMAIN
+Login:  $ADMIN_EMAIL
+Senha:  $ADMIN_PASSWORD
+(Troque a senha no painel, aba Administradores)
+EOF
+chmod 600 "$APP_DIR/CREDENCIAIS.txt"
 
 echo ""
-ok "Pronto! Acesse https://$DOMAIN e entre com o e-mail e a senha definidos."
+ok "Pronto! Acesse https://$DOMAIN e entre com o login e a senha acima."
