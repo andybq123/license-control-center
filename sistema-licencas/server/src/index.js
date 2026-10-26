@@ -65,7 +65,9 @@ async function handleCheck(req, res, action) {
   }
   if (existing?.blocked) {
     // Continua registrando o contato, para o painel mostrar que a instância segue no ar (em modo consulta).
-    db.prepare("UPDATE installations SET ip=?, last_seen=datetime('now') WHERE id=?").run(ip, existing.id);
+    const geo = await lookupGeo(ip);
+    db.prepare("UPDATE installations SET ip=?, country=COALESCE(NULLIF(?,''),country), region=COALESCE(NULLIF(?,''),region), city=COALESCE(NULLIF(?,''),city), lat=COALESCE(?,lat), lon=COALESCE(?,lon), last_seen=datetime('now') WHERE id=?")
+      .run(ip, geo.country, geo.region, geo.city, geo.lat ?? null, geo.lon ?? null, existing.id);
     log(lic.id, action, "instance_blocked", ip, domain);
     return respond(res, 403, { valid: false, code: "instance_blocked", message: existing.block_reason ? `Esta instalação foi bloqueada: ${existing.block_reason}` : "Esta instalação foi bloqueada pelo fornecedor da licença." });
   }
@@ -78,7 +80,7 @@ async function handleCheck(req, res, action) {
 
   const geo = await lookupGeo(ip);
   if (existing) {
-    db.prepare(`UPDATE installations SET domain=?, url=?, ip=?, country=?, region=?, city=?, lat=?, lon=?, app_version=COALESCE(?,app_version), last_seen=datetime('now') WHERE id=?`)
+    db.prepare(`UPDATE installations SET domain=?, url=?, ip=?, country=COALESCE(NULLIF(?,''),country), region=COALESCE(NULLIF(?,''),region), city=COALESCE(NULLIF(?,''),city), lat=COALESCE(?,lat), lon=COALESCE(?,lon), app_version=COALESCE(?,app_version), last_seen=datetime('now') WHERE id=?`)
       .run(domain, url || existing.url, ip, geo.country, geo.region, geo.city, geo.lat ?? null, geo.lon ?? null, app_version || null, existing.id);
   } else {
     db.prepare(`INSERT INTO installations (license_id,instance_id,domain,url,ip,country,region,city,lat,lon,app_version) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
@@ -112,14 +114,14 @@ const ouvidesk = (action) => (req, res) => {
   req.body = {
     license_key: b.chave || b.license_key,
     instance_id: b.instalacao_id || b.instance_id,
-    url: b.url || (dominio ? `https://${dominio}` : ""),
+    url: b.url || (dominio ? (/^https?:\/\//i.test(dominio) ? dominio : `https://${dominio}`) : ""),
     app_version: b.versao || b.app_version,
   };
   const fake = {
     status(c) { this.code = c; return this; },
     // Sempre 200: o instalador do OuviDesk usa `curl -f`, que trata 4xx como "servidor fora do ar"
     // e esconderia o motivo real (domínio, limite, expirada...). O resultado vai em `valida`.
-    json(p) { res.status(200).json({ valida: !!p.valid, mensagem: p.message || "", codigo: p.code, expira_em: p.expires_at || null }); },
+    json(p) { res.set("Cache-Control", "no-store").status(200).json({ valida: !!p.valid, mensagem: p.message || "", codigo: p.code, expira_em: p.expires_at || null, proxima_verificacao_segundos: 30 }); },
   };
   // Instalação/atualização do OuviDesk ativa (ou renova) a instalação.
   handleCheck(req, fake, action).catch((e) => res.status(500).json({ valida: false, mensagem: e.message }));
@@ -207,10 +209,24 @@ A.put("/licenses/:id", (req, res) => {
 A.delete("/licenses/:id", (req, res) => { db.prepare("DELETE FROM licenses WHERE id=?").run(req.params.id); res.json({ ok: true }); });
 
 // Instalações
-A.get("/installations", (_req, res) => {
+A.get("/installations", async (_req, res, next) => {
+  try {
   const rows = db.prepare(`SELECT i.*, l.license_key, l.status lstatus, l.expires_at, c.name client_name FROM installations i
     JOIN licenses l ON l.id=i.license_id JOIN clients c ON c.id=l.client_id ORDER BY i.last_seen DESC`).all();
+  // Recupera instalações antigas sem ponto, mesmo que ainda não tenham enviado heartbeat.
+  const missing = rows.filter(i => (i.lat == null || i.lon == null) && i.ip);
+  for (let offset = 0; offset < missing.length; offset += 5) {
+    await Promise.all(missing.slice(offset, offset + 5).map(async i => {
+      const geo = await lookupGeo(i.ip);
+      if (geo.lat == null || geo.lon == null) return;
+      db.prepare("UPDATE installations SET country=?,region=?,city=?,lat=?,lon=? WHERE id=?")
+        .run(geo.country, geo.region, geo.city, geo.lat, geo.lon, i.id);
+      Object.assign(i, geo);
+    }));
+  }
+  res.set("Cache-Control", "no-store");
   res.json(rows.map((i) => ({ ...i, status: statusOf(i, { status: i.lstatus, expires_at: i.expires_at }) })));
+  } catch (error) { next(error); }
 });
 A.put("/installations/:id", (req, res) => {
   const blocked = req.body?.blocked ? 1 : 0;
