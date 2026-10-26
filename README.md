@@ -7,6 +7,20 @@ do sistema do cliente; se forem inválidas, a instalação é bloqueada.
 > **Como instalar na VPS: passo a passo para copiar e colar está logo abaixo,**
 > **e também no arquivo [`sistema-licencas/IMPLANTAR-NA-VPS.md`](./sistema-licencas/IMPLANTAR-NA-VPS.md).**
 
+## Instalação automática (recomendado)
+
+Depois de entrar na VPS, instalar Docker e Git e clonar o repositório (passos abaixo),
+basta rodar um comando e responder as perguntas:
+
+```bash
+cd /opt/projeto/sistema-licencas
+sudo bash instalar.sh
+```
+
+O script instala o Docker se faltando, pergunta domínio/e-mail/senha do admin,
+confere o DNS, gera o `.env`, sobe tudo com `docker compose` e avisa quando o
+painel estiver no ar. Também oferece criar o backup diário automático.
+
 ## O que tem no repositório
 
 | Pasta / arquivo | O que é |
