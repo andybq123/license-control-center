@@ -9,3 +9,5 @@
 .led.on{animation:led 1.8s ease-in-out infinite}@keyframes led{50%{box-shadow:0 0 6px 2px var(--c),0 0 20px 6px var(--c),0 0 44px 12px color-mix(in srgb,var(--c) 60%,transparent)}}
 @media(prefers-reduced-motion:reduce){.led.on{animation:none}}
 .mapboxgl-popup-content{background:var(--card);color:var(--fg);border:1px solid var(--line);font-size:12px}.mapboxgl-popup-tip{border-top-color:var(--card)!important}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card)}.leaflet-popup-content{color:var(--fg)}
+.tiles-dark{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.3)}
+.leaflet-container{background:#05080d}
