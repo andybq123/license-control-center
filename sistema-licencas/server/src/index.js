@@ -128,6 +128,23 @@ const ouvidesk = (action) => (req, res) => {
 };
 app.post("/api/public/validar", publicLimiter, ouvidesk("activate"));
 app.post("/api/public/heartbeat", publicLimiter, ouvidesk("heartbeat"));
+// Tentativas/etapas da instalação do OuviDesk (aceita também chave inválida, só registra).
+const evText = (v, n) => String(v ?? "").slice(0, n);
+app.post("/api/public/instalacao-evento", publicLimiter, async (req, res) => {
+  const b = req.body || {};
+  const event = evText(b.evento || b.etapa || b.event, 60).trim();
+  if (!event) return res.status(400).json({ ok: false, mensagem: "Informe o campo evento." });
+  const key = evText(b.chave || b.license_key, 40).trim().toUpperCase();
+  const lic = key ? db.prepare("SELECT id FROM licenses WHERE license_key=?").get(key) : null;
+  const ip = req.ip;
+  const geo = await lookupGeo(ip);
+  db.prepare(`INSERT INTO install_events (license_id,license_key,instance_id,domain,event,result,message,app_version,ip,country,region,city)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(lic?.id ?? null, key || null, evText(b.instalacao_id || b.instance_id, 100),
+    evText(normalizeDomain(b.dominio || b.url || "") || b.dominio, 200), event, evText(b.resultado || b.status, 30),
+    evText(b.mensagem || b.message, 500), evText(b.versao || b.app_version, 40), ip, geo.country, geo.region, geo.city);
+  db.prepare("DELETE FROM install_events WHERE id < (SELECT MAX(id) - 5000 FROM install_events)").run();
+  res.json({ ok: true });
+});
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 /* ============ PAINEL ADMIN ============ */
@@ -238,6 +255,8 @@ A.put("/installations/:id", (req, res) => {
 });
 A.delete("/installations/:id", (req, res) => { db.prepare("DELETE FROM installations WHERE id=?").run(req.params.id); res.json({ ok: true }); });
 
+A.get("/install-events", (_req, res) => res.json(db.prepare(`SELECT e.*, c.name client_name FROM install_events e LEFT JOIN licenses l ON l.id=e.license_id LEFT JOIN clients c ON c.id=l.client_id ORDER BY e.id DESC LIMIT 300`).all()));
+A.get("/config", (_req, res) => res.json({ mapbox_token: process.env.MAPBOX_TOKEN || "" }));
 A.get("/logs", (_req, res) => res.json(db.prepare(`SELECT g.*, l.license_key FROM logs g LEFT JOIN licenses l ON l.id=g.license_id ORDER BY g.id DESC LIMIT 300`).all()));
 
 // Administradores

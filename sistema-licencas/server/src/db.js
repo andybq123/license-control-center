@@ -54,6 +54,22 @@ CREATE TABLE IF NOT EXISTS installations (
   last_seen TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (license_id, instance_id)
 );
+CREATE TABLE IF NOT EXISTS install_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  license_id INTEGER,
+  license_key TEXT,
+  instance_id TEXT,
+  domain TEXT,
+  event TEXT NOT NULL,
+  result TEXT,
+  message TEXT,
+  app_version TEXT,
+  ip TEXT,
+  country TEXT,
+  region TEXT,
+  city TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS logs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   license_id INTEGER,
