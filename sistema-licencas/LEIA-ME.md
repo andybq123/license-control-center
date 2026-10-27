@@ -116,3 +116,4 @@ O mapa fica na **Visão geral** e recupera coordenadas ausentes pelo IP já regi
 
 - O instalador pode enviar cada etapa para `POST /api/public/instalacao-evento` com `{evento, chave, dominio, instalacao_id, versao, resultado, mensagem}`. Elas aparecem na aba **Tentativas** do painel (inclusive chaves erradas).
 - Mapa Mapbox escuro: coloque `MAPBOX_TOKEN=pk....` no `.env` e rode `sudo docker compose up -d --build`. Sem token, o painel usa um mapa escuro gratuito.
+<!-- sync 2026-10-27T16:41:55Z -->
