@@ -83,15 +83,15 @@ m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remo
 const COR={online:"--ok",offline:"--bad",bloqueada:"--warn","licença inválida":"--invalid"};let panelCfg=null;
 async function renderMap(m,rows){const i=rows||await api("/installations");const pts=i.filter(x=>x.lat!=null&&x.lon!=null&&Number.isFinite(Number(x.lat))&&Number.isFinite(Number(x.lon))&&Math.abs(Number(x.lat))<=90&&Math.abs(Number(x.lon))<=180);
 $("#map-note").textContent=`${pts.length} de ${i.length} instalações localizadas`+(pts.length<i.length?" · Sem ponto: IP local ou localização indisponível. Localização aproximada pelo IP da VPS.":" · Localização aproximada pelo IP da VPS.");
-if(!panelCfg)panelCfg=await api("/config").catch(()=>({}));
+if(!panelCfg)panelCfg=await api("/config").catch(()=>null);const MBT=(panelCfg&&panelCfg.mapbox_token)||"pk.eyJ1Ijoic2V0YW1vbml0b3JhbWVudG8iLCJhIjoiY21xaWF0bHZ4MDR4ZTJwb3FsZGdlbXVlYyJ9.CDb9dIjIHuYyF2QZNY7WGA";
 const popup=x=>`<b>${esc(x.client_name)}</b><br>${esc(x.url||x.domain)}<br>IP: ${esc(x.ip)}<br>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))}<br>Status: <b>${esc(x.status)}</b><br>Último contato: ${dt(x.last_seen)}`;
 const led=x=>{const c=getComputedStyle(document.documentElement).getPropertyValue(COR[x.status]||"--mut").trim();const el=document.createElement("div");el.className="led"+(x.status==="online"?" on":"");el.style.setProperty("--c",c);el.title=`${x.client_name||""} · ${x.status}`;return el};
-if(panelCfg.mapbox_token&&window.mapboxgl){mapboxgl.accessToken=panelCfg.mapbox_token;const map=new mapboxgl.Map({container:"map",style:"mapbox://styles/mapbox/dark-v11",center:[-47.9,-15.8],zoom:3,scrollZoom:false,attributionControl:true});map.addControl(new mapboxgl.NavigationControl({showCompass:false}));activeMap=map;const b=new mapboxgl.LngLatBounds();
+if(window.mapboxgl&&mapboxgl.supported&&mapboxgl.supported()){mapboxgl.accessToken=MBT;const map=new mapboxgl.Map({container:"map",style:"mapbox://styles/mapbox/dark-v11",center:[-47.9,-15.8],zoom:3,scrollZoom:false,attributionControl:true});map.addControl(new mapboxgl.NavigationControl({showCompass:false}));activeMap=map;const b=new mapboxgl.LngLatBounds();
 pts.forEach(x=>{const ll=[Number(x.lon),Number(x.lat)];b.extend(ll);new mapboxgl.Marker({element:led(x)}).setLngLat(ll).setPopup(new mapboxgl.Popup({offset:12}).setHTML(popup(x))).addTo(map)});
 if(pts.length)map.on("load",()=>map.fitBounds(b,{padding:60,maxZoom:9,duration:0}));return}
 if(!window.L){$("#map").innerHTML="<p class=mut>Mapa indisponível. Verifique a conexão com o serviço de mapas.</p>";return}
 const map=L.map("map",{scrollWheelZoom:false}).setView([-15.8,-47.9],4);activeMap=map;
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:18,subdomains:"abcd",attribution:"© OpenStreetMap © CARTO"}).addTo(map);
+L.tileLayer("https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/512/{z}/{x}/{y}@2x?access_token="+MBT,{maxZoom:18,tileSize:512,zoomOffset:-1,attribution:"© Mapbox © OpenStreetMap"}).addTo(map);
 const bounds=[];pts.forEach(x=>{bounds.push([Number(x.lat),Number(x.lon)]);
 L.marker([Number(x.lat),Number(x.lon)],{icon:L.divIcon({className:"",html:led(x).outerHTML,iconSize:[16,16],iconAnchor:[8,8]})}).addTo(map).bindPopup(popup(x))});
 requestAnimationFrame(()=>{if(activeMap!==map)return;map.invalidateSize();if(bounds.length)map.fitBounds(bounds,{padding:[45,45],maxZoom:10})})}
