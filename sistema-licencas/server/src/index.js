@@ -256,7 +256,7 @@ A.put("/installations/:id", (req, res) => {
 A.delete("/installations/:id", (req, res) => { db.prepare("DELETE FROM installations WHERE id=?").run(req.params.id); res.json({ ok: true }); });
 
 A.get("/install-events", (_req, res) => res.json(db.prepare(`SELECT e.*, c.name client_name FROM install_events e LEFT JOIN licenses l ON l.id=e.license_id LEFT JOIN clients c ON c.id=l.client_id ORDER BY e.id DESC LIMIT 300`).all()));
-A.get("/config", (_req, res) => res.json({ mapbox_token: (/^pk\.eyJ/.test(process.env.MAPBOX_TOKEN || "") ? process.env.MAPBOX_TOKEN : "") || "pk.eyJ1Ijoic2V0YW1vbml0b3JhbWVudG8iLCJhIjoiY21xaWF0bHZ4MDR4ZTJwb3FsZGdlbXVlYyJ9.CDb9dIjIHuYyF2QZNY7WGA" }));
+A.get("/config", (_req, res) => res.json({ mapbox_token: (/^pk\.eyJ/.test(process.env.MAPBOX_TOKEN || "") ? process.env.MAPBOX_TOKEN : "") || "" }));
 A.get("/logs", (_req, res) => res.json(db.prepare(`SELECT g.*, l.license_key FROM logs g LEFT JOIN licenses l ON l.id=g.license_id ORDER BY g.id DESC LIMIT 300`).all()));
 
 // Administradores

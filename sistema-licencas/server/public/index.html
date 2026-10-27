@@ -81,7 +81,7 @@ m.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(confirm("Remo
 const COR={online:"--ok",offline:"--bad",bloqueada:"--warn","licença inválida":"--invalid"};let panelCfg=null;
 async function renderMap(m,rows){const i=rows||await api("/installations");const pts=i.filter(x=>x.lat!=null&&x.lon!=null&&Number.isFinite(Number(x.lat))&&Number.isFinite(Number(x.lon))&&Math.abs(Number(x.lat))<=90&&Math.abs(Number(x.lon))<=180);
 $("#map-note").textContent=`${pts.length} de ${i.length} instalações localizadas`+(pts.length<i.length?" · Sem ponto: IP local ou localização indisponível. Localização aproximada pelo IP da VPS.":" · Localização aproximada pelo IP da VPS.");
-if(!panelCfg)panelCfg=await api("/config").catch(()=>null);const MBT=(panelCfg&&panelCfg.mapbox_token)||"pk.eyJ1Ijoic2V0YW1vbml0b3JhbWVudG8iLCJhIjoiY21xaWF0bHZ4MDR4ZTJwb3FsZGdlbXVlYyJ9.CDb9dIjIHuYyF2QZNY7WGA";
+if(!panelCfg)panelCfg=await api("/config").catch(()=>null);const MBT=(panelCfg&&panelCfg.mapbox_token)||"";
 const popup=x=>`<b>${esc(x.client_name)}</b><br>${esc(x.url||x.domain)}<br>IP: ${esc(x.ip)}<br>${esc([x.city,x.region,x.country].filter(Boolean).join(", "))}<br>Status: <b>${esc(x.status)}</b><br>Último contato: ${dt(x.last_seen)}`;
 const led=x=>{const c=getComputedStyle(document.documentElement).getPropertyValue(COR[x.status]||"--mut").trim();const el=document.createElement("div");el.className="led"+(x.status==="online"?" on":"");el.style.setProperty("--c",c);el.title=`${x.client_name||""} · ${x.status}`;return el};
 if(!window.L){$("#map").innerHTML="<p class=mut>Mapa indisponível. Verifique a conexão com o serviço de mapas.</p>";return}
