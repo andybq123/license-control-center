@@ -111,3 +111,8 @@ sudo docker compose up -d --build
 O mapa fica na **Visão geral** e recupera coordenadas ausentes pelo IP já registrado, sem precisar reinstalar as instâncias. Coordenadas zero são válidas e falhas temporárias não apagam um ponto conhecido. O ponto é aproximado e representa a VPS de saída, não o endereço físico do cliente. Redes locais e provedores de geolocalização indisponíveis não geram pontos fictícios.
 
 **Prazo de bloqueio:** a decisão fica salva imediatamente no painel, mas o prazo de até 60 segundos depende de instalar a verificação de 30 segundos e a aplicação do estado no OuviDesk. Atualizar apenas esta VPS não muda o timer do OuviDesk. Sem conexão, o último estado é mantido e não há garantia desse prazo. O cliente Node oferece `onInvalid`, `onValid` (restaura o uso) e `onUnreachable`.
+
+## Tentativas de instalação e mapa escuro
+
+- O instalador pode enviar cada etapa para `POST /api/public/instalacao-evento` com `{evento, chave, dominio, instalacao_id, versao, resultado, mensagem}`. Elas aparecem na aba **Tentativas** do painel (inclusive chaves erradas).
+- Mapa Mapbox escuro: coloque `MAPBOX_TOKEN=pk....` no `.env` e rode `sudo docker compose up -d --build`. Sem token, o painel usa um mapa escuro gratuito.
